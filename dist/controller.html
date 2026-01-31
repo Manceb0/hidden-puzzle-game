@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Control Remoto - Hidden Puzzle</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      font-family: 'Arial', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      position: fixed;
+      touch-action: none;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+      padding: 20px;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+
+    .status {
+      font-size: 18px;
+      opacity: 0.9;
+    }
+
+    .status.connected {
+      color: #4ade80;
+    }
+
+    .status.connecting {
+      color: #ffd700;
+    }
+
+    .status.disconnected {
+      color: #ef4444;
+    }
+
+    .joystick-container {
+      position: relative;
+      width: 300px;
+      height: 300px;
+      margin: 40px auto;
+    }
+
+    .joystick-base {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(10px);
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .joystick-stick {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.9);
+      border: 3px solid rgba(255, 255, 255, 0.5);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      transition: transform 0.1s ease-out;
+      cursor: pointer;
+    }
+
+    .joystick-stick.active {
+      background: rgba(255, 255, 255, 1);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .instructions {
+      text-align: center;
+      padding: 20px;
+      font-size: 18px;
+      opacity: 0.8;
+      max-width: 90%;
+    }
+
+    .logo-container {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+    }
+
+    .logo {
+      width: 80px;
+      height: auto;
+      filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+    }
+  </style>
+</head>
+<body>
+  <div class="logo-container">
+    <img src="./logo.png" alt="Apolo 27" class="logo">
+  </div>
+
+  <div class="header">
+    <h1>🎮 Control Remoto</h1>
+    <div class="status connecting" id="status">Conectando...</div>
+  </div>
+
+  <div class="joystick-container" id="joystickContainer">
+    <div class="joystick-base"></div>
+    <div class="joystick-stick" id="joystickStick"></div>
+  </div>
+
+  <div class="instructions">
+    Toca y arrastra el joystick para mover
+  </div>
+
+  <script>
+    let ws = null;
+    let isActive = false;
+    let centerX = 0;
+    let centerY = 0;
+    let maxRadius = 90; // Radio máximo del joystick base (150px / 2 - 30px de margen)
+
+    // Obtener sessionId de la URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session');
+
+    if (!sessionId) {
+      document.getElementById('status').textContent = 'Error: No hay sesión';
+      document.getElementById('status').className = 'status disconnected';
+    } else {
+      // Conectar WebSocket como controlador
+      // Si estamos en HTTPS (ngrok), usar WSS sin puerto
+      // Si estamos en HTTP local, usar WS con puerto
+      let wsUrl;
+      if (window.location.protocol === 'https:') {
+        // ngrok o HTTPS público - usar WSS sin puerto
+        wsUrl = `wss://${window.location.hostname}?type=controller&session=${sessionId}`;
+      } else {
+        // HTTP local - usar WS con puerto
+        const port = window.location.port || '3003';
+        wsUrl = `ws://${window.location.hostname}:${port}?type=controller&session=${sessionId}`;
+      }
+      
+      console.log('Conectando controlador WebSocket a:', wsUrl);
+      console.log('SessionId:', sessionId);
+      console.log('Protocol:', window.location.protocol);
+      console.log('Hostname:', window.location.hostname);
+      
+      try {
+        ws = new WebSocket(wsUrl);
+        
+        // Timeout de conexión (10 segundos)
+        const connectionTimeout = setTimeout(() => {
+          if (ws.readyState === WebSocket.CONNECTING) {
+            console.error('⏱️ Timeout: La conexión WebSocket tardó más de 10 segundos');
+            ws.close();
+            document.getElementById('status').textContent = 'Timeout de conexión';
+            document.getElementById('status').className = 'status disconnected';
+          }
+        }, 10000);
+        
+        ws.onopen = () => {
+          clearTimeout(connectionTimeout);
+        };
+        
+        ws.onclose = () => {
+          clearTimeout(connectionTimeout);
+        };
+      } catch (error) {
+        console.error('❌ Error creando WebSocket:', error);
+        document.getElementById('status').textContent = 'Error al crear conexión';
+        document.getElementById('status').className = 'status disconnected';
+      }
+
+      ws.onopen = () => {
+        console.log('✅ Controlador WebSocket conectado exitosamente');
+        document.getElementById('status').textContent = '✅ Conectado';
+        document.getElementById('status').className = 'status connected';
+      };
+
+      ws.onerror = (error) => {
+        console.error('❌ Error WebSocket:', error);
+        console.error('URL intentada:', wsUrl);
+        console.error('SessionId:', sessionId);
+        document.getElementById('status').textContent = 'Error de conexión. Verifica la consola.';
+        document.getElementById('status').className = 'status disconnected';
+      };
+
+      ws.onclose = (event) => {
+        console.log('🔌 WebSocket cerrado');
+        console.log('  Código:', event.code);
+        console.log('  Razón:', event.reason || '(sin razón)');
+        console.log('  WasClean:', event.wasClean);
+        console.log('  URL:', wsUrl);
+        
+        let statusText = 'Desconectado';
+        if (event.code === 1005) {
+          statusText = 'Desconectado (sin código de cierre)';
+        } else if (event.code === 1008) {
+          statusText = `Error: ${event.reason || 'Parámetros inválidos'}`;
+        } else if (event.code !== 1000) {
+          statusText = `Desconectado (código: ${event.code})`;
+        }
+        
+        document.getElementById('status').textContent = statusText;
+        document.getElementById('status').className = 'status disconnected';
+      };
+    }
+
+    const joystickContainer = document.getElementById('joystickContainer');
+    const joystickStick = document.getElementById('joystickStick');
+    const rect = joystickContainer.getBoundingClientRect();
+
+    function updateJoystick(x, y) {
+      const dx = x - centerX;
+      const dy = y - centerY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      let angle = 0;
+      if (dx === 0) {
+        angle = dy >= 0 ? Math.PI / 2 : (3 * Math.PI) / 2;
+      } else if (dx > 0) {
+        angle = Math.atan(dy / dx);
+      } else {
+        angle = Math.PI + Math.atan(dy / dx);
+      }
+
+      let finalDistance = Math.min(distance, maxRadius);
+      const finalX = centerX + Math.cos(angle) * finalDistance;
+      const finalY = centerY + Math.sin(angle) * finalDistance;
+
+      joystickStick.style.transform = `translate(calc(-50% + ${finalX - centerX}px), calc(-50% + ${finalY - centerY}px))`;
+
+      // Normalizar distancia (0 a 1)
+      const normalizedDist = finalDistance / maxRadius;
+
+      // Enviar datos al servidor
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const joystickData = {
+          type: 'joystick',
+          ang: angle,
+          dist: normalizedDist
+        };
+        ws.send(JSON.stringify(joystickData));
+        // Log solo cada 10 frames para no saturar la consola
+        if (Math.random() < 0.1) {
+          console.log('📤 Enviando joystick:', joystickData);
+        }
+      } else {
+        console.log('⚠️ WebSocket no está abierto. Estado:', ws ? ws.readyState : 'null');
+      }
+    }
+
+    function resetJoystick() {
+      joystickStick.style.transform = 'translate(-50%, -50%)';
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'joystick',
+          ang: 0,
+          dist: 0
+        }));
+      }
+    }
+
+    function getTouchPos(e) {
+      const touch = e.touches ? e.touches[0] : e;
+      const rect = joystickContainer.getBoundingClientRect();
+      return {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top
+      };
+    }
+
+    // Calcular centro
+    function updateCenter() {
+      const rect = joystickContainer.getBoundingClientRect();
+      centerX = rect.width / 2;
+      centerY = rect.height / 2;
+    }
+
+    updateCenter();
+    window.addEventListener('resize', updateCenter);
+
+    // Eventos táctiles
+    joystickContainer.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      isActive = true;
+      joystickStick.classList.add('active');
+      const pos = getTouchPos(e);
+      updateJoystick(pos.x, pos.y);
+    });
+
+    joystickContainer.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (isActive) {
+        const pos = getTouchPos(e);
+        updateJoystick(pos.x, pos.y);
+      }
+    });
+
+    joystickContainer.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      isActive = false;
+      joystickStick.classList.remove('active');
+      resetJoystick();
+    });
+
+    joystickContainer.addEventListener('touchcancel', (e) => {
+      e.preventDefault();
+      isActive = false;
+      joystickStick.classList.remove('active');
+      resetJoystick();
+    });
+
+    // Eventos de mouse (para pruebas en desktop)
+    joystickContainer.addEventListener('mousedown', (e) => {
+      isActive = true;
+      joystickStick.classList.add('active');
+      const pos = getTouchPos(e);
+      updateJoystick(pos.x, pos.y);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isActive) {
+        const pos = getTouchPos(e);
+        updateJoystick(pos.x, pos.y);
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isActive) {
+        isActive = false;
+        joystickStick.classList.remove('active');
+        resetJoystick();
+      }
+    });
+
+    // Prevenir scroll y zoom
+    document.addEventListener('touchmove', (e) => {
+      if (e.target !== joystickContainer && !joystickContainer.contains(e.target)) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    document.addEventListener('gesturestart', (e) => {
+      e.preventDefault();
+    });
+
+    document.addEventListener('gesturechange', (e) => {
+      e.preventDefault();
+    });
+
+    document.addEventListener('gestureend', (e) => {
+      e.preventDefault();
+    });
+  </script>
+</body>
+</html>

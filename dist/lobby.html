@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1080, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Hidden Puzzle Game - Escanea para jugar</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 1080px;
+      height: 1920px;
+      margin: 0 auto;
+      overflow: hidden;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #1e293b 50%, #0f172a 100%);
+      background-size: 400% 400%;
+      animation: gradientShift 15s ease infinite;
+      font-family: 'Arial', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .logo-container {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 100;
+    }
+
+    .logo {
+      width: 120px;
+      height: auto;
+      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+    }
+
+    .container {
+      text-align: center;
+      padding: 40px;
+    }
+
+    h1 {
+      font-size: 64px;
+      margin-bottom: 20px;
+      text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .subtitle {
+      font-size: 32px;
+      margin-bottom: 60px;
+      opacity: 0.9;
+    }
+
+    .qr-container {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 40px;
+      border-radius: 30px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      margin-bottom: 40px;
+      display: inline-block;
+    }
+
+    #qrCode {
+      width: 600px;
+      height: 600px;
+      display: block;
+    }
+
+    .status {
+      font-size: 28px;
+      margin-top: 30px;
+      min-height: 40px;
+    }
+
+    .status.waiting {
+      color: #ffd700;
+    }
+
+    .status.connected {
+      color: #4ade80;
+      animation: pulse 1s ease infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .loading {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="logo-container">
+    <img src="./logo.png" alt="Apolo 27" class="logo">
+  </div>
+
+  <div class="container">
+    <h1>🎮 ESCANEA PARA JUGAR</h1>
+    <p class="subtitle">Usa tu celular como control</p>
+
+    <div class="qr-container">
+      <img id="qrCode" src="" alt="Código QR">
+    </div>
+
+    <div class="status waiting" id="status">
+      Esperando conexión...
+    </div>
+    <div class="loading" id="loading" style="display: none;"></div>
+  </div>
+
+  <script>
+    let ws = null;
+    let sessionId = null;
+
+    // Obtener QR y sessionId
+    fetch('/api/qr')
+      .then(res => res.json())
+      .then(data => {
+        sessionId = data.sessionId;
+        document.getElementById('qrCode').src = data.qrUrl;
+        
+        // Conectar WebSocket como cliente del juego
+        // Usar la misma base URL que el QR (puede ser pública o local)
+        let wsBaseUrl;
+        if (data.baseUrl) {
+          // Si hay URL pública configurada (ngrok), convertir a WebSocket
+          wsBaseUrl = data.baseUrl.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://');
+        } else {
+          // Si no, usar la URL actual
+          if (window.location.protocol === 'https:') {
+            // HTTPS (ngrok) - usar WSS sin puerto
+            wsBaseUrl = `wss://${window.location.hostname}`;
+          } else {
+            // HTTP local - usar WS con puerto
+            const port = window.location.port || '3003';
+            wsBaseUrl = `ws://${window.location.hostname}:${port}`;
+          }
+        }
+        
+        const wsUrl = `${wsBaseUrl}?type=game&session=${sessionId}`;
+        
+        console.log('Conectando WebSocket a:', wsUrl);
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log('WebSocket conectado');
+        };
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'connected') {
+            document.getElementById('status').textContent = '✅ ¡Controlador conectado!';
+            document.getElementById('status').className = 'status connected';
+            document.getElementById('loading').style.display = 'none';
+            
+            // Redirigir al juego después de 1 segundo
+            setTimeout(() => {
+              window.location.href = '/index.html?session=' + sessionId;
+            }, 1000);
+          } else if (data.type === 'disconnect') {
+            document.getElementById('status').textContent = 'Controlador desconectado. Esperando nueva conexión...';
+            document.getElementById('status').className = 'status waiting';
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('Error WebSocket:', error);
+          document.getElementById('status').textContent = 'Error de conexión. Verifica que el servidor esté corriendo.';
+          document.getElementById('status').className = 'status disconnected';
+        };
+
+        ws.onclose = () => {
+          console.log('WebSocket cerrado');
+        };
+      })
+      .catch(error => {
+        console.error('Error obteniendo QR:', error);
+        document.getElementById('status').textContent = 'Error al generar QR. Verifica que el servidor esté corriendo.';
+        document.getElementById('status').className = 'status disconnected';
+      });
+  </script>
+</body>
+</html>

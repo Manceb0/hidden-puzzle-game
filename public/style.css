@@ -1,0 +1,76 @@
+html {
+  width: 1080px;
+  height: 1920px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  width: 1080px;
+  height: 1920px;
+  background-color: black;
+  font-family: "Goldman", "sansserif";
+  overflow: hidden;
+  position: relative;
+}
+
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1080px;
+  height: 1920px;
+}
+
+.logo-container {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 100;
+}
+
+.logo {
+  width: 120px;
+  height: auto;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+}
+#kc {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  color: yellow;
+  font-weight: bolder;
+}
+.screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1060px;
+  height: 1900px;
+  padding: 10px;
+  background-color: black;
+  color: yellow;
+  text-align: justify;
+  justify-content: center;
+  align-items: center;
+  display: flex;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100%;
+  background-image: url("https://1.bp.blogspot.com/-nqZMLEQIIGo/YGP6YsFeyYI/AAAAAAAAB_0/wd4qTp3wBsEQPQCO5KbUhsEzpQAX3HRHgCLcBGAsYHQ/s0/img.png");
+}
+#finished div {
+  display: block;
+}
+#finished {
+  display: none;
+  text-align: center;
+  color: skyblue;
+}
+input[type="button"] {
+  outline: none;
+  color: red;
+  background-color: black;
+  border-color: yellow;
+}
