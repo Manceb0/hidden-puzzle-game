@@ -1,62 +1,4 @@
 "use strict";
-
-// ============================================
-// CONFIGURACIÓN DE PUSHER
-// ============================================
-// REEMPLAZAR con tus credenciales de Pusher
-const PUSHER_KEY = window.PUSHER_KEY || 'TU_PUSHER_KEY_AQUI';
-const PUSHER_CLUSTER = window.PUSHER_CLUSTER || 'us2';
-
-// Obtener sessionId de la URL
-const urlParams = new URLSearchParams(window.location.search);
-const sessionId = urlParams.get('session');
-
-let pusher = null;
-let channel = null;
-
-// Datos del joystick remoto
-let remoteJoy = {
-  ang: 0,
-  dist: 0
-};
-
-// Inicializar Pusher si hay sessionId
-if (sessionId) {
-  pusher = new Pusher(PUSHER_KEY, {
-    cluster: PUSHER_CLUSTER,
-    forceTLS: true
-  });
-  
-  const channelName = `game-${sessionId}`;
-  channel = pusher.subscribe(channelName);
-  
-  console.log('Juego suscrito al canal:', channelName);
-  
-  // Escuchar eventos del joystick
-  channel.bind('joystick', (data) => {
-    remoteJoy.ang = data.ang;
-    remoteJoy.dist = data.dist;
-  });
-  
-  // Escuchar desconexión del controlador
-  channel.bind('controller-disconnected', () => {
-    console.log('Controlador desconectado');
-    remoteJoy.ang = 0;
-    remoteJoy.dist = 0;
-  });
-  
-  pusher.connection.bind('connected', () => {
-    console.log('Pusher conectado al juego');
-  });
-  
-  pusher.connection.bind('error', (err) => {
-    console.error('Error de Pusher:', err);
-  });
-}
-
-// ============================================
-// CÓDIGO DEL JUEGO ORIGINAL
-// ============================================
 var W, H, L, D, joy, A, B;
 var victory = false;
 var inv = {
@@ -139,9 +81,8 @@ window.onload = function () {
   var ctx = cnv.getContext("2d");
   function init() {
     barriers = [];
-    // Tamaño fijo para monolitos touch 1080x1920
-    W = 1080;
-    H = 1920;
+    W = window.innerWidth;
+    H = window.innerHeight;
     cnv.width = W;
     cnv.height = H;
     L = (W < H ? W : H) * 4;
@@ -225,18 +166,10 @@ window.onload = function () {
     kill: function () {
       joy.stick = false;
       joy.dist = 0;
-    },
-    // Método para actualizar desde control remoto (Pusher)
-    updateFromRemote: function() {
-      if (sessionId && (remoteJoy.dist > 0 || this.dist > 0)) {
-        // Si hay datos del control remoto, usarlos
-        this.ang = remoteJoy.ang;
-        this.dist = remoteJoy.dist * this.maxR;
-      }
     }
   };
 
-  // Agregar eventos táctiles y de mouse para control directo
+  // Eventos táctiles y de mouse para control directo
   cnv.addEventListener("touchstart", joy.fix);
   cnv.addEventListener("touchmove", joy.move);
   cnv.addEventListener("touchend", joy.kill);
@@ -281,9 +214,6 @@ window.onload = function () {
       ctx.drawImage(avater, this.x, H - L + this.y, this.w, this.h);
     },
     move: function () {
-      // Actualizar joystick desde control remoto si está disponible
-      joy.updateFromRemote();
-      
       this.dx = (this.w / 10) * (joy.dist / joy.maxR) * cos(joy.ang);
       this.dy = (this.h / 10) * (joy.dist / joy.maxR) * sin(joy.ang);
 
